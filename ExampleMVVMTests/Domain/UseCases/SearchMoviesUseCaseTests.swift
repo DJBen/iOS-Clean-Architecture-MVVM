@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import Combine
 
 class SearchMoviesUseCaseTests: XCTestCase {
     
@@ -25,25 +26,32 @@ class SearchMoviesUseCaseTests: XCTestCase {
     class MoviesQueriesRepositoryMock: MoviesQueriesRepository {
         var recentQueries: [MovieQuery] = []
         
-        func recentsQueries(number: Int, completion: @escaping (Result<[MovieQuery], Error>) -> Void) {
-            completion(.success(recentQueries))
+        func recentsQueries(number: Int) -> AnyPublisher<[MovieQuery], Error> {
+            return Future<[MovieQuery], Error>({ [unowned self] (completion) in
+                completion(.success(self.recentQueries))
+            }).eraseToAnyPublisher()
         }
-        func saveRecentQuery(query: MovieQuery, completion: @escaping (Result<MovieQuery, Error>) -> Void) {
-            recentQueries.append(query)
+        func saveRecentQuery(query: MovieQuery) -> AnyPublisher<MovieQuery, Error> {
+            return Future<MovieQuery, Error>({ [unowned self] (completion) in
+                self.recentQueries.append(query)
+                completion(.success(query))
+            }).eraseToAnyPublisher()
         }
     }
     
     class MoviesRepositorySuccessMock: MoviesRepository {
-        func moviesList(query: MovieQuery, page: Int, completion: @escaping (Result<MoviesPage, Error>) -> Void) -> Cancellable? {
-            completion(.success(SearchMoviesUseCaseTests.moviesPages[0]))
-            return nil
+        func moviesList(query: MovieQuery, page: Int) -> AnyPublisher<MoviesPage, Error> {
+            return Future<MoviesPage, Error>({ (completion) in
+                completion(.success(SearchMoviesUseCaseTests.moviesPages[0]))
+            }).eraseToAnyPublisher()
         }
     }
     
     class MoviesRepositoryFailureMock: MoviesRepository {
-        func moviesList(query: MovieQuery, page: Int, completion: @escaping (Result<MoviesPage, Error>) -> Void) -> Cancellable? {
-            completion(.failure(MoviesRepositorySuccessTestError.failedFetching))
-            return nil
+        func moviesList(query: MovieQuery, page: Int) -> AnyPublisher<MoviesPage, Error> {
+            return Future<MoviesPage, Error>({ (completion) in
+                completion(.failure(MoviesRepositorySuccessTestError.failedFetching))
+            }).eraseToAnyPublisher()
         }
     }
     
@@ -58,17 +66,17 @@ class SearchMoviesUseCaseTests: XCTestCase {
         // when
         let requestValue = SearchMoviesUseCaseRequestValue(query: MovieQuery(query: "title1"),
                                                                                      page: 0)
-        _ = useCase.execute(requestValue: requestValue) { _ in
+        _ = useCase.execute(requestValue: requestValue).sink(receiveCompletion: { (_) in
+        }, receiveValue: { (_) in
             expectation.fulfill()
-        }
+        })
         // then
-        var recents = [MovieQuery]()
-        moviesQueriesRepository.recentsQueries(number: 1) { result in
-            recents = (try? result.get()) ?? []
+        _ = moviesQueriesRepository.recentsQueries(number: 1).sink(receiveCompletion: { (_) in
+        }, receiveValue: { (recents) in
+            XCTAssertTrue(recents.contains(MovieQuery(query: "title1")))
             expectation.fulfill()
-        }
+        })
         waitForExpectations(timeout: 5, handler: nil)
-        XCTAssertTrue(recents.contains(MovieQuery(query: "title1")))
     }
     
     func testSearchMoviesUseCase_whenFailedFetchingMoviesForQuery_thenQueryIsNotSavedInRecentQueries() {
@@ -80,18 +88,17 @@ class SearchMoviesUseCaseTests: XCTestCase {
                                                 moviesQueriesRepository: moviesQueriesRepository)
         
         // when
-        let requestValue = SearchMoviesUseCaseRequestValue(query: MovieQuery(query: "title1"),
-                                                          page: 0)
-        _ = useCase.execute(requestValue: requestValue) { _ in
+        let requestValue = SearchMoviesUseCaseRequestValue(query: MovieQuery(query: "title1"), page: 0)
+        _ = useCase.execute(requestValue: requestValue).sink(receiveCompletion: { (_) in
+        }, receiveValue: { (_) in
             expectation.fulfill()
-        }
+        })
         // then
-        var recents = [MovieQuery]()
-        moviesQueriesRepository.recentsQueries(number: 1) { result in
-            recents = (try? result.get()) ?? []
+        _ = moviesQueriesRepository.recentsQueries(number: 1).sink(receiveCompletion: { (_) in
+        }, receiveValue: { (recents) in
+            XCTAssertTrue(recents.isEmpty)
             expectation.fulfill()
-        }
+        })
         waitForExpectations(timeout: 5, handler: nil)
-        XCTAssertTrue(recents.isEmpty)
     }
 }

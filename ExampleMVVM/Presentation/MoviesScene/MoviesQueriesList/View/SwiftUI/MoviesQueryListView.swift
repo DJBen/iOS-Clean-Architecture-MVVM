@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import Combine
 
 @available(iOS 13.0, *)
 extension DefaultMoviesQueryListItemViewModel: Identifiable { }
@@ -33,12 +34,14 @@ struct MoviesQueryListView: View {
 final class MoviesQueryListViewModelWrapper: ObservableObject {
     var viewModel: MoviesQueryListViewModel?
     @Published var items: [DefaultMoviesQueryListItemViewModel] = []
+
+    private var itemsObserver: AnyCancellable?
     
     init(viewModel: MoviesQueryListViewModel?) {
         self.viewModel = viewModel
-        viewModel?.items.observe(on: self) { [weak self] values in
-            self?.items = values as! [DefaultMoviesQueryListItemViewModel]
-        }
+        itemsObserver = viewModel?.itemsPublisher.sink(receiveValue: { [unowned self] (values) in
+            self.items = values as! [DefaultMoviesQueryListItemViewModel]
+        })
     }
 }
 

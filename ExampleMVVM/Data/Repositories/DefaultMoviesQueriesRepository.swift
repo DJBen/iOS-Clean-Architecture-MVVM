@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 final class DefaultMoviesQueriesRepository {
     
@@ -21,11 +22,11 @@ final class DefaultMoviesQueriesRepository {
 
 extension DefaultMoviesQueriesRepository: MoviesQueriesRepository {
     
-    func recentsQueries(number: Int, completion: @escaping (Result<[MovieQuery], Error>) -> Void) {
-        return moviesQueriesPersistentStorage.recentsQueries(number: number, completion: completion)
+    func recentsQueries(number: Int) -> AnyPublisher<[MovieQuery], Error> {
+        return moviesQueriesPersistentStorage.recentsQueries(number: number)
     }
     
-    func saveRecentQuery(query: MovieQuery, completion: @escaping (Result<MovieQuery, Error>) -> Void) {
-        moviesQueriesPersistentStorage.saveRecentQuery(query: query, completion: completion)
+    func saveRecentQuery(query: MovieQuery) -> AnyPublisher<MovieQuery, Error> {
+        return moviesQueriesPersistentStorage.saveRecentQuery(query: query)
     }
 }

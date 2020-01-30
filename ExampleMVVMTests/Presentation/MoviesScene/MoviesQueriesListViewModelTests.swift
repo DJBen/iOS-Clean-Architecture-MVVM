@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import Combine
 
 class MoviesQueriesListViewModelTests: XCTestCase {
     
@@ -33,14 +34,15 @@ class MoviesQueriesListViewModelTests: XCTestCase {
         var error: Error?
         var movieQueries: [MovieQuery] = []
         
-        func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue, completion: @escaping (Result<[MovieQuery], Error>) -> Void) -> Cancellable? {
-            if let error = error {
-                completion(.failure(error))
-            } else {
-                completion(.success(movieQueries))
-            }
-            expectation?.fulfill()
-            return nil
+        func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue) -> AnyPublisher<[MovieQuery], Error> {
+            return Future<[MovieQuery], Error>({ [unowned self] (completion) in
+                if let error = self.error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(self.movieQueries))
+                }
+                self.expectation?.fulfill()
+            }).eraseToAnyPublisher()
         }
     }
     
@@ -57,7 +59,7 @@ class MoviesQueriesListViewModelTests: XCTestCase {
         
         // then
         waitForExpectations(timeout: 5, handler: nil)
-        XCTAssertEqual(viewModel.items.value.map { $0.query }, movieQueries.map { $0.query })
+        XCTAssertEqual(viewModel.items.map { $0.query }, movieQueries.map { $0.query })
     }
     
     func test_whenFetchRecentMovieQueriesUseCaseReturnsError_thenDontShowAnyQuery() {
@@ -73,7 +75,7 @@ class MoviesQueriesListViewModelTests: XCTestCase {
         
         // then
         waitForExpectations(timeout: 5, handler: nil)
-        XCTAssertTrue(viewModel.items.value.isEmpty)
+        XCTAssertTrue(viewModel.items.isEmpty)
     }
     
     func test_whenDidSelectQueryEventIsReceived_thenNotifyDelegate() {

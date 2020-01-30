@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 final class UserDefaultsStorage {
     private let maxStorageLimit: Int
@@ -40,22 +41,27 @@ final class UserDefaultsStorage {
 }
 
 extension UserDefaultsStorage: MoviesQueriesStorage {
-    func recentsQueries(number: Int, completion: @escaping (Result<[MovieQuery], Error>) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let strongSelf = self else { return }
-            var queries = strongSelf.moviesQuries
-            queries = queries.count < strongSelf.maxStorageLimit ? queries : Array(queries[0..<number])
-            completion(.success(queries))
-        }
+    func recentsQueries(number: Int) -> AnyPublisher<[MovieQuery], Error> {
+        return Future<[MovieQuery], Error> { (completion) in
+            DispatchQueue.global(qos: .background).async { [weak self] in
+                guard let strongSelf = self else { return }
+                var queries = strongSelf.moviesQuries
+                queries = queries.count < strongSelf.maxStorageLimit ? queries : Array(queries[0..<number])
+                completion(.success(queries))
+            }
+        }.eraseToAnyPublisher()
     }
-    func saveRecentQuery(query: MovieQuery, completion: @escaping (Result<MovieQuery, Error>) -> Void) {
-        DispatchQueue.global(qos: .background).async { [weak self] in
-            guard let strongSelf = self else { return }
-            var queries = strongSelf.moviesQuries
-            queries = queries.filter { $0 != query }
-            queries.insert(query, at: 0)
-            strongSelf.moviesQuries = strongSelf.removeOldQueries(queries)
-            completion(.success(query))
-        }
+
+    func saveRecentQuery(query: MovieQuery) -> AnyPublisher<MovieQuery, Error> {
+        return Future<MovieQuery, Error> { (completion) in
+            DispatchQueue.global(qos: .background).async { [weak self] in
+                guard let strongSelf = self else { return }
+                var queries = strongSelf.moviesQuries
+                queries = queries.filter { $0 != query }
+                queries.insert(query, at: 0)
+                strongSelf.moviesQuries = strongSelf.removeOldQueries(queries)
+                completion(.success(query))
+            }
+        }.eraseToAnyPublisher()
     }
 }

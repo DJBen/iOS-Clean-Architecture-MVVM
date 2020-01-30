@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import Combine
 
 class MoviesListViewModelTests: XCTestCase {
     
@@ -27,15 +28,15 @@ class MoviesListViewModelTests: XCTestCase {
         var error: Error?
         var page = MoviesPage(page: 0, totalPages: 0, movies: [])
         
-        func execute(requestValue: SearchMoviesUseCaseRequestValue,
-                     completion: @escaping (Result<MoviesPage, Error>) -> Void) -> Cancellable? {
-            if let error = error {
-                completion(.failure(error))
-            } else {
-                completion(.success(page))
-            }
-            expectation?.fulfill()
-            return nil
+        func execute(requestValue: SearchMoviesUseCaseRequestValue) -> AnyPublisher<MoviesPage, Error> {
+            return Future<MoviesPage, Error>({ [unowned self] (completion) in
+                if let error = self.error {
+                    completion(.failure(error))
+                } else {
+                    completion(.success(self.page))
+                }
+                self.expectation?.fulfill()
+            }).eraseToAnyPublisher()
         }
     }
     

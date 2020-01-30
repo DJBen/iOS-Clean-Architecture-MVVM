@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 protocol MoviesQueryListViewModelInput {
     func viewWillAppear()
@@ -13,7 +14,8 @@ protocol MoviesQueryListViewModelInput {
 }
 
 protocol MoviesQueryListViewModelOutput {
-    var items: Observable<[MoviesQueryListItemViewModel]> { get }
+    var items: [MoviesQueryListItemViewModel] { get }
+    var itemsPublisher: Published<[MoviesQueryListItemViewModel]>.Publisher { get }
 }
 
 protocol MoviesQueryListViewModel: MoviesQueryListViewModelInput, MoviesQueryListViewModelOutput { }
@@ -30,7 +32,12 @@ final class DefaultMoviesQueryListViewModel: MoviesQueryListViewModel {
     private weak var delegate: MoviesQueryListViewModelDelegate?
     
     // MARK: - OUTPUT
-    let items: Observable<[MoviesQueryListItemViewModel]> = Observable([])
+    @Published var items: [MoviesQueryListItemViewModel] = []
+    var itemsPublisher: Published<[MoviesQueryListItemViewModel]>.Publisher {
+        return $items
+    }
+
+    private var updateQueriesTask: AnyCancellable?
     
     init(numberOfQueriesToShow: Int,
          fetchRecentMovieQueriesUseCase: FetchRecentMovieQueriesUseCase,
@@ -42,13 +49,11 @@ final class DefaultMoviesQueryListViewModel: MoviesQueryListViewModel {
     
     private func updateMoviesQueries() {
         let request = FetchRecentMovieQueriesUseCaseRequestValue(number: numberOfQueriesToShow)
-        _ = fetchRecentMovieQueriesUseCase.execute(requestValue: request) { [weak self] result in
-            switch result {
-            case .success(let items):
-                self?.items.value = items.map { $0.query }.map ( DefaultMoviesQueryListItemViewModel.init )
-            case .failure: break
-            }
-        }
+        updateQueriesTask = fetchRecentMovieQueriesUseCase.execute(requestValue: request).receive(on: RunLoop.main).sink(receiveCompletion: { (completion) in
+
+        }, receiveValue: { [unowned self] (result) in
+            self.items = result.map { $0.query }.map ( DefaultMoviesQueryListItemViewModel.init )
+        })
     }
 }
 

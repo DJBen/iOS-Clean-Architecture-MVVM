@@ -7,6 +7,7 @@
 
 import Foundation
 import XCTest
+import Combine
 
 class PosterImagesRepositoryMock: PosterImagesRepository {
     var expectation: XCTestExpectation?
@@ -14,14 +15,15 @@ class PosterImagesRepositoryMock: PosterImagesRepository {
     var image = Data()
     var validateInput: ((String, Int) -> Void)?
     
-    func image(with imagePath: String, width: Int, completion: @escaping (Result<Data, Error>) -> Void) -> Cancellable? {
-        validateInput?(imagePath, width)
-        if let error = error {
-            completion(.failure(error))
-        } else {
-            completion(.success(image))
-        }
-        expectation?.fulfill()
-        return nil
+    func image(with imagePath: String, width: Int) -> AnyPublisher<Data, Error> {
+        return Future<Data, Error>({ [unowned self] (completion) in
+            self.validateInput?(imagePath, width)
+            if let error = self.error {
+                completion(.failure(error))
+            } else {
+                completion(.success(self.image))
+            }
+            self.expectation?.fulfill()
+        }).eraseToAnyPublisher()
     }
 }

@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import Combine
 
 final class MovieDetailsViewController: UIViewController, StoryboardInstantiable {
     
@@ -16,7 +17,11 @@ final class MovieDetailsViewController: UIViewController, StoryboardInstantiable
     @IBOutlet private var overviewTextView: UITextView!
     
     var viewModel: MovieDetailsViewModel!
-    
+
+    private var titleObserver: AnyCancellable?
+    private var posterImageObserver: AnyCancellable?
+    private var overviewObserver: AnyCancellable?
+
     static func create(with viewModel: MovieDetailsViewModel) -> MovieDetailsViewController {
         let view = MovieDetailsViewController.instantiateViewController()
         view.viewModel = viewModel
@@ -31,9 +36,17 @@ final class MovieDetailsViewController: UIViewController, StoryboardInstantiable
     }
     
     private func bind(to viewModel: MovieDetailsViewModel) {
-        viewModel.title.observe(on: self) { [weak self] in self?.title = $0 }
-        viewModel.posterImage.observe(on: self) { [weak self] in self?.posterImageView.image = $0.flatMap { UIImage(data: $0) } }
-        viewModel.overview.observe(on: self) { [weak self] in self?.overviewTextView.text = $0 }
+        titleObserver = viewModel.titlePublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }, receiveValue: { [unowned self] (title) in
+            self.title = title
+        })
+
+        posterImageObserver = viewModel.posterImagePublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }, receiveValue: { [unowned self] (imageData) in
+            self.posterImageView.image = imageData.flatMap { UIImage(data: $0) }
+        })
+
+        overviewObserver = viewModel.overviewPublisher.receive(on: RunLoop.main).assign(to: \.overviewTextView.text, on: self)
     }
     
     override func viewWillLayoutSubviews() {

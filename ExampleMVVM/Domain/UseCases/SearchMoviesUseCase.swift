@@ -6,10 +6,10 @@
 //
 
 import Foundation
+import Combine
 
 protocol SearchMoviesUseCase {
-    func execute(requestValue: SearchMoviesUseCaseRequestValue,
-                 completion: @escaping (Result<MoviesPage, Error>) -> Void) -> Cancellable?
+    func execute(requestValue: SearchMoviesUseCaseRequestValue) -> AnyPublisher<MoviesPage, Error>
 }
 
 final class DefaultSearchMoviesUseCase: SearchMoviesUseCase {
@@ -22,19 +22,11 @@ final class DefaultSearchMoviesUseCase: SearchMoviesUseCase {
         self.moviesQueriesRepository = moviesQueriesRepository
     }
     
-    func execute(requestValue: SearchMoviesUseCaseRequestValue,
-                 completion: @escaping (Result<MoviesPage, Error>) -> Void) -> Cancellable? {
-        return moviesRepository.moviesList(query: requestValue.query, page: requestValue.page) { [weak self] result in
-            guard let strongSelf = self else { return }
-            
-            switch result {
-            case .success:
-                strongSelf.moviesQueriesRepository.saveRecentQuery(query: requestValue.query) { _ in }
-                completion(result)
-            case .failure:
-                completion(result)
-            }
-        }
+    func execute(requestValue: SearchMoviesUseCaseRequestValue) -> AnyPublisher<MoviesPage, Error> {
+        return moviesRepository.moviesList(query: requestValue.query, page: requestValue.page).map { [unowned self] (moviesPage) -> MoviesPage in
+            self.moviesQueriesRepository.saveRecentQuery(query: requestValue.query)
+            return moviesPage
+        }.eraseToAnyPublisher()
     }
 }
 

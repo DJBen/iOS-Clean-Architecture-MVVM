@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 public enum DataTransferError: Error {
     case noResponse
@@ -15,11 +16,9 @@ public enum DataTransferError: Error {
 }
 
 public protocol DataTransferService {
-    typealias CompletionHandler<T> = (Result<T, Error>) -> Void
-    
+
     @discardableResult
-    func request<T: Decodable, E: ResponseRequestable>(with endpoint: E,
-                                                       completion: @escaping CompletionHandler<T>) -> NetworkCancellable? where E.Response == T
+    func request<T: Decodable, E: ResponseRequestable>(with endpoint: E) -> AnyPublisher<T, Error> where E.Response == T
 }
 
 public protocol DataTransferErrorResolver {
@@ -51,30 +50,22 @@ public final class DefaultDataTransferService {
 
 extension DefaultDataTransferService: DataTransferService {
     
-    public func request<T: Decodable, E: ResponseRequestable>(with endpoint: E,
-                                                              completion: @escaping CompletionHandler<T>) -> NetworkCancellable? where E.Response == T {
+    public func request<T: Decodable, E: ResponseRequestable>(with endpoint: E) -> AnyPublisher<T, Error> where E.Response == T {
 
-        return self.networkService.request(endpoint: endpoint) { result in
-            switch result {
-            case .success(let data):
-                let result: Result<T, Error> = self.decode(data: data, decoder: endpoint.responseDecoder)
-                DispatchQueue.main.async { return completion(result) }
-            case .failure(let error):
-                self.errorLogger.log(error: error)
-                let error = self.resolve(networkError: error)
-                DispatchQueue.main.async { return completion(.failure(error)) }
-            }
-        }
+        return self.networkService.request(endpoint: endpoint).mapError { (error) -> Error in
+            self.errorLogger.log(error: error)
+            let error = self.resolve(networkError: error)
+            return error
+        }.tryMap { (data) -> T in
+            return try self.decode(data: data, decoder: endpoint.responseDecoder)
+        }.eraseToAnyPublisher()
     }
     
-    private func decode<T: Decodable>(data: Data?, decoder: ResponseDecoder) -> Result<T, Error> {
+    private func decode<T: Decodable>(data: Data, decoder: ResponseDecoder) throws -> T {
         do {
-            guard let data = data else { return .failure(DataTransferError.noResponse) }
-            let result: T = try decoder.decode(data)
-            return .success(result)
+            return try decoder.decode(data)
         } catch {
-            self.errorLogger.log(error: error)
-            return .failure(DataTransferError.parsing(error))
+            throw DataTransferError.parsing(error)
         }
     }
     

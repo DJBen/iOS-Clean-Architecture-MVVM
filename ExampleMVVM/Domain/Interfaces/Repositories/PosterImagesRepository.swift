@@ -6,7 +6,8 @@
 //
 
 import Foundation
+import Combine
 
 protocol PosterImagesRepository {
-    func image(with imagePath: String, width: Int, completion: @escaping (Result<Data, Error>) -> Void) -> Cancellable?
+    func image(with imagePath: String, width: Int) -> AnyPublisher<Data, Error>
 }

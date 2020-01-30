@@ -7,6 +7,7 @@
 
 import Foundation
 import CoreData
+import Combine
 
 enum CoreDataStorageError: Error {
     case readError(Error)
@@ -49,45 +50,47 @@ final class CoreDataStorage {
 
 extension CoreDataStorage: MoviesQueriesStorage {
     
-    func recentsQueries(number: Int, completion: @escaping (Result<[MovieQuery], Error>) -> Void) {
-        
-        persistentContainer.performBackgroundTask { context in
-            do {
-                let request: NSFetchRequest<MovieQueryEntity> = MovieQueryEntity.fetchRequest()
-                request.sortDescriptors = [NSSortDescriptor(key: #keyPath(MovieQueryEntity.createdAt),
-                                                            ascending: false)]
-                request.fetchLimit = number
-                let resut = try context.fetch(request).map ( MovieQuery.init )
-                DispatchQueue.global(qos: .background).async {
-                    completion(.success(resut))
+    func recentsQueries(number: Int) -> AnyPublisher<[MovieQuery], Error> {
+        return Future<[MovieQuery], Error> { [unowned self] (completion) in
+            self.persistentContainer.performBackgroundTask { context in
+                do {
+                    let request: NSFetchRequest<MovieQueryEntity> = MovieQueryEntity.fetchRequest()
+                    request.sortDescriptors = [NSSortDescriptor(key: #keyPath(MovieQueryEntity.createdAt),
+                                                                ascending: false)]
+                    request.fetchLimit = number
+                    let resut = try context.fetch(request).map(MovieQuery.init)
+                    DispatchQueue.global(qos: .background).async {
+                        completion(.success(resut))
+                    }
+                } catch {
+                    DispatchQueue.global(qos: .background).async {
+                        completion(.failure(CoreDataStorageError.readError(error)))
+                    }
+                    print(error)
                 }
-            } catch {
-                DispatchQueue.global(qos: .background).async {
-                    completion(.failure(CoreDataStorageError.readError(error)))
-                }
-                print(error)
             }
-        }
+        }.eraseToAnyPublisher()
     }
     
-    func saveRecentQuery(query: MovieQuery, completion: @escaping (Result<MovieQuery, Error>) -> Void) {
-
-        persistentContainer.performBackgroundTask { [weak self] context in
-            guard let strongSelf = self else { return }
-            do {
-                try strongSelf.cleanUpQueries(for: query, inContext: context)
-                let entity = MovieQueryEntity(movieQuery: query, insertInto: context)
-                try context.save()
-                DispatchQueue.global(qos: .background).async {
-                    completion(.success(MovieQuery(movieQueryEntity: entity)))
+    func saveRecentQuery(query: MovieQuery) -> AnyPublisher<MovieQuery, Error> {
+        return Future<MovieQuery, Error> { [unowned self] (completion) in
+            self.persistentContainer.performBackgroundTask { [weak self] context in
+                guard let strongSelf = self else { return }
+                do {
+                    try strongSelf.cleanUpQueries(for: query, inContext: context)
+                    let entity = MovieQueryEntity(movieQuery: query, insertInto: context)
+                    try context.save()
+                    DispatchQueue.global(qos: .background).async {
+                        completion(.success(MovieQuery(movieQueryEntity: entity)))
+                    }
+                } catch {
+                    DispatchQueue.global(qos: .background).async {
+                        completion(.failure(CoreDataStorageError.writeError(error)))
+                    }
+                    print(error)
                 }
-            } catch {
-                DispatchQueue.global(qos: .background).async {
-                    completion(.failure(CoreDataStorageError.writeError(error)))
-                }
-                print(error)
             }
-        }
+        }.eraseToAnyPublisher()
     }
     
     fileprivate func cleanUpQueries(for query: MovieQuery, inContext context: NSManagedObjectContext) throws {

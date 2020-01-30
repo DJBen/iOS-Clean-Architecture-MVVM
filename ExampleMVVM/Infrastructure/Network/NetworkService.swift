@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 public enum NetworkError: Error {
     case error(statusCode: Int, data: Data?)
@@ -15,23 +16,14 @@ public enum NetworkError: Error {
     case urlGeneration
 }
 
-public protocol NetworkCancellable {
-    func cancel()
-}
-
-extension URLSessionTask: NetworkCancellable { }
-
 public protocol NetworkService {
     typealias CompletionHandler = (Result<Data?, NetworkError>) -> Void
     
-    func request(endpoint: Requestable, completion: @escaping CompletionHandler) -> NetworkCancellable?
+    func request(endpoint: Requestable) -> AnyPublisher<Data, NetworkError>
 }
 
 public protocol NetworkSessionManager {
-    typealias CompletionHandler = (Data?, URLResponse?, Error?) -> Void
-    
-    func request(_ request: URLRequest,
-                 completion: @escaping CompletionHandler) -> NetworkCancellable
+    func request(_ request: URLRequest) -> AnyPublisher<URLSession.DataTaskPublisher.Output, Error>
 }
 
 public protocol NetworkErrorLogger {
@@ -56,29 +48,23 @@ public final class DefaultNetworkService {
         self.logger = logger
     }
     
-    private func request(request: URLRequest, completion: @escaping CompletionHandler) -> NetworkCancellable {
-        
-        let sessionDataTask = sessionManager.request(request) { data, response, requestError in
-            
-            if let requestError = requestError {
-                var error: NetworkError
-                if let response = response as? HTTPURLResponse {
-                    error = .error(statusCode: response.statusCode, data: data)
-                } else {
-                    error = self.resolve(error: requestError)
-                }
-                
-                self.logger.log(error: error)
-                completion(.failure(error))
-            } else {
-                self.logger.log(responseData: data, response: response)
-                completion(.success(data))
-            }
-        }
-    
+    private func request(request: URLRequest) -> AnyPublisher<Data, NetworkError> {
         logger.log(request: request)
 
-        return sessionDataTask
+        return sessionManager.request(request).tryMap { (data, response) -> Data in
+            if let response = response as? HTTPURLResponse, response.statusCode >= 400 {
+                let error = NetworkError.error(statusCode: response.statusCode, data: data)
+                self.logger.log(error: error)
+                throw error
+            } else {
+                self.logger.log(responseData: data, response: response)
+                return data
+            }
+        }.mapError { (requestError) -> NetworkError in
+            let error = self.resolve(error: requestError)
+            self.logger.log(error: error)
+            return error
+        }.eraseToAnyPublisher()
     }
     
     private func resolve(error: Error) -> NetworkError {
@@ -93,13 +79,12 @@ public final class DefaultNetworkService {
 
 extension DefaultNetworkService: NetworkService {
     
-    public func request(endpoint: Requestable, completion: @escaping CompletionHandler) -> NetworkCancellable? {
+    public func request(endpoint: Requestable) -> AnyPublisher<Data, NetworkError> {
         do {
             let urlRequest = try endpoint.urlRequest(with: config)
-            return request(request: urlRequest, completion: completion)
+            return request(request: urlRequest)
         } catch {
-            completion(.failure(.urlGeneration))
-            return nil
+            return Fail<Data, NetworkError>(error: .urlGeneration).eraseToAnyPublisher()
         }
     }
 }
@@ -111,11 +96,8 @@ extension DefaultNetworkService: NetworkService {
 
 public class DefaultNetworkSessionManager: NetworkSessionManager {
     public init() {}
-    public func request(_ request: URLRequest,
-                        completion: @escaping CompletionHandler) -> NetworkCancellable {
-        let task = URLSession.shared.dataTask(with: request, completionHandler: completion)
-        task.resume()
-        return task
+    public func request(_ request: URLRequest) -> AnyPublisher<URLSession.DataTaskPublisher.Output, Error> {
+        return URLSession.shared.dataTaskPublisher(for: request).mapError { $0 as Error }.eraseToAnyPublisher()
     }
 }
 

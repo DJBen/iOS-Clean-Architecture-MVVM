@@ -6,8 +6,9 @@
 //
 
 import Foundation
+import Combine
 
 protocol MoviesQueriesRepository {
-    func recentsQueries(number: Int, completion: @escaping (Result<[MovieQuery], Error>) -> Void)
-    func saveRecentQuery(query: MovieQuery, completion: @escaping (Result<MovieQuery, Error>) -> Void)
+    func recentsQueries(number: Int) -> AnyPublisher<[MovieQuery], Error>
+    @discardableResult func saveRecentQuery(query: MovieQuery) -> AnyPublisher<MovieQuery, Error>
 }

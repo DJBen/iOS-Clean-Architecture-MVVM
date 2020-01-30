@@ -35,6 +35,6 @@ class MovieDetailsViewModelTests: XCTestCase {
         
         // then
         waitForExpectations(timeout: 5, handler: nil)
-        XCTAssertEqual(viewModel.posterImage.value, expectedImage)
+        XCTAssertEqual(viewModel.posterImage, expectedImage)
     }
 }

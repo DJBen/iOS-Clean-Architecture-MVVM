@@ -6,10 +6,10 @@
 //
 
 import Foundation
+import Combine
 
 protocol FetchRecentMovieQueriesUseCase {
-    func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue,
-                 completion: @escaping (Result<[MovieQuery], Error>) -> Void) -> Cancellable?
+    func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue) -> AnyPublisher<[MovieQuery], Error>
 }
 
 final class DefaultFetchRecentMovieQueriesUseCase: FetchRecentMovieQueriesUseCase {
@@ -20,10 +20,8 @@ final class DefaultFetchRecentMovieQueriesUseCase: FetchRecentMovieQueriesUseCas
         self.moviesQueriesRepository = moviesQueriesRepository
     }
     
-    func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue,
-                 completion: @escaping (Result<[MovieQuery], Error>) -> Void) -> Cancellable? {
-        moviesQueriesRepository.recentsQueries(number: requestValue.number, completion: completion)
-        return nil
+    func execute(requestValue: FetchRecentMovieQueriesUseCaseRequestValue) -> AnyPublisher<[MovieQuery], Error> {
+        return moviesQueriesRepository.recentsQueries(number: requestValue.number)
     }
 }
 

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 protocol MoviesListItemViewModelInput {
     func didEndDisplaying()
@@ -16,7 +17,8 @@ protocol MoviesListItemViewModelOutput {
     var title: String { get }
     var overview: String { get }
     var releaseDate: String { get }
-    var posterImage: Observable<Data?> { get }
+    var posterImage: Data? { get }
+    var posterImagePublisher: Published<Data?>.Publisher { get }
     var posterPath: String? { get }
 }
 
@@ -31,10 +33,13 @@ final class DefaultMoviesListItemViewModel: MoviesListItemViewModel {
     let overview: String
     let releaseDate: String
     let posterPath: String?
-    let posterImage: Observable<Data?> = Observable(nil)
+    @Published var posterImage: Data? = nil
+    var posterImagePublisher: Published<Data?>.Publisher {
+        return $posterImage
+    }
 
     private let posterImagesRepository: PosterImagesRepository
-    private var imageLoadTask: Cancellable? { willSet { imageLoadTask?.cancel() } }
+    private var imageLoadTask: AnyCancellable?
 
     init(movie: Movie,
          posterImagesRepository: PosterImagesRepository) {
@@ -51,22 +56,18 @@ final class DefaultMoviesListItemViewModel: MoviesListItemViewModel {
 extension DefaultMoviesListItemViewModel {
     
     func didEndDisplaying() {
-        posterImage.value = nil
+        posterImage = nil
     }
     
     func updatePosterImage(width: Int) {
-        posterImage.value = nil
+        posterImage = nil
         guard let posterPath = posterPath else { return }
         
-        imageLoadTask = posterImagesRepository.image(with: posterPath, width: width) { [weak self] result in
-            guard self?.posterPath == posterPath else { return }
-            switch result {
-            case .success(let data):
-                self?.posterImage.value = data
-            case .failure: break
-            }
-            self?.imageLoadTask = nil
-        }
+        imageLoadTask = posterImagesRepository.image(with: posterPath, width: width).sink(receiveCompletion: { (completion) in
+
+        }, receiveValue: { (data) in
+            self.posterImage = data
+        })
     }
 }
 

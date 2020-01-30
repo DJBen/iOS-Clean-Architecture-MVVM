@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 enum MoviesListViewModelRoute {
     case initial
@@ -31,11 +32,21 @@ protocol MoviesListViewModelInput {
 }
 
 protocol MoviesListViewModelOutput {
-    var route: Observable<MoviesListViewModelRoute> { get }
-    var items: Observable<[MoviesListItemViewModel]> { get }
-    var loadingType: Observable<MoviesListViewModelLoading> { get }
-    var query: Observable<String> { get }
-    var error: Observable<String> { get }
+    var route: MoviesListViewModelRoute { get }
+    var routePublisher: Published<MoviesListViewModelRoute>.Publisher { get }
+
+    var items: [MoviesListItemViewModel] { get }
+    var itemsPublisher: Published<[MoviesListItemViewModel]>.Publisher { get }
+
+    var loadingType: MoviesListViewModelLoading { get }
+    var loadingTypePublisher: Published<MoviesListViewModelLoading>.Publisher { get }
+
+    var query: String { get }
+    var queryPublisher: Published<String>.Publisher { get }
+
+    var error: String { get }
+    var errorPublisher : Published<String>.Publisher { get }
+
     var isEmpty: Bool { get }
 }
 
@@ -57,15 +68,35 @@ final class DefaultMoviesListViewModel: MoviesListViewModel {
     private let searchMoviesUseCase: SearchMoviesUseCase
     private let posterImagesRepository: PosterImagesRepository
     
-    private var moviesLoadTask: Cancellable? { willSet { moviesLoadTask?.cancel() } }
+    private var moviesLoadTask: AnyCancellable?
     
     // MARK: - OUTPUT
-    let route: Observable<MoviesListViewModelRoute> = Observable(.initial)
-    let items: Observable<[MoviesListItemViewModel]> = Observable([])
-    let loadingType: Observable<MoviesListViewModelLoading> = Observable(.none)
-    let query: Observable<String> = Observable("")
-    let error: Observable<String> = Observable("")
-    var isEmpty: Bool { return items.value.isEmpty }
+    @Published var route: MoviesListViewModelRoute = .initial
+    var routePublisher: Published<MoviesListViewModelRoute>.Publisher {
+        return $route
+    }
+
+    @Published var items: [MoviesListItemViewModel] = []
+    var itemsPublisher: Published<[MoviesListItemViewModel]>.Publisher {
+        return $items
+    }
+
+    @Published var loadingType: MoviesListViewModelLoading = .none
+    var loadingTypePublisher: Published<MoviesListViewModelLoading>.Publisher {
+        return $loadingType
+    }
+
+    @Published var query: String = ""
+    var queryPublisher: Published<String>.Publisher {
+        return $query
+    }
+
+    @Published var error: String = ""
+    var errorPublisher: Published<String>.Publisher {
+        return $error
+    }
+
+    var isEmpty: Bool { return items.isEmpty }
     
     @discardableResult
     init(searchMoviesUseCase: SearchMoviesUseCase,
@@ -77,7 +108,7 @@ final class DefaultMoviesListViewModel: MoviesListViewModel {
     private func appendPage(moviesPage: MoviesPage) {
         self.currentPage = moviesPage.page
         self.totalPageCount = moviesPage.totalPages
-        self.items.value = items.value + moviesPage.movies.map {
+        self.items = items + moviesPage.movies.map {
             DefaultMoviesListItemViewModel(movie: $0,
                                            posterImagesRepository: posterImagesRepository)
         }
@@ -86,28 +117,28 @@ final class DefaultMoviesListViewModel: MoviesListViewModel {
     private func resetPages() {
         currentPage = 0
         totalPageCount = 1
-        items.value.removeAll()
+        items.removeAll()
     }
     
     private func load(movieQuery: MovieQuery, loadingType: MoviesListViewModelLoading) {
-        self.loadingType.value = loadingType
-        self.query.value = movieQuery.query
+        self.loadingType = loadingType
+        self.query = movieQuery.query
         
         let moviesRequest = SearchMoviesUseCaseRequestValue(query: movieQuery, page: nextPage)
-        moviesLoadTask = searchMoviesUseCase.execute(requestValue: moviesRequest) { [weak self] result in
-            guard let strongSelf = self else { return }
-            switch result {
-            case .success(let moviesPage):
-                strongSelf.appendPage(moviesPage: moviesPage)
-            case .failure(let error):
-                strongSelf.handle(error: error)
+        moviesLoadTask = searchMoviesUseCase.execute(requestValue: moviesRequest).receive(on: RunLoop.main).sink(receiveCompletion: { [unowned self] (completion) in
+            switch completion {
+                case .failure(let error):
+                    self.handle(error: error)
+                case .finished: break
             }
-            strongSelf.loadingType.value = .none
-        }
+            self.loadingType = .none
+        }, receiveValue: { [unowned self] (moviesPage) in
+            self.appendPage(moviesPage: moviesPage)
+        })
     }
     
     private func handle(error: Error) {
-        self.error.value = error.isInternetConnectionError ?
+        self.error = error.isInternetConnectionError ?
             NSLocalizedString("No internet connection", comment: "") :
             NSLocalizedString("Failed loading movies", comment: "")
     }
@@ -124,8 +155,8 @@ extension DefaultMoviesListViewModel {
     func viewDidLoad() { }
     
     func didLoadNextPage() {
-        guard hasMorePages, loadingType.value == .none else { return }
-        load(movieQuery: MovieQuery(query: query.value),
+        guard hasMorePages, loadingType == .none else { return }
+        load(movieQuery: MovieQuery(query: query),
              loadingType: .nextPage)
     }
     
@@ -139,17 +170,17 @@ extension DefaultMoviesListViewModel {
     }
 
     func showQueriesSuggestions() {
-        route.value = .showMovieQueriesSuggestions(delegate: self)
+        route = .showMovieQueriesSuggestions(delegate: self)
     }
     
     func closeQueriesSuggestions() {
-        route.value = .closeMovieQueriesSuggestions
+        route = .closeMovieQueriesSuggestions
     }
     
     func didSelect(item: MoviesListItemViewModel) {
-        route.value = .showMovieDetail(title: item.title,
+        route = .showMovieDetail(title: item.title,
                                        overview: item.overview,
-                                       posterPlaceholderImage: item.posterImage.value,
+                                       posterPlaceholderImage: item.posterImage,
                                        posterPath: item.posterPath)
     }
 }

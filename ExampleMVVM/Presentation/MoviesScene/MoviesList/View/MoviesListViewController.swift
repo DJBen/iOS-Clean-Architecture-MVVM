@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Combine
 
 final class MoviesListViewController: UIViewController, StoryboardInstantiable, Alertable {
     
@@ -22,7 +23,13 @@ final class MoviesListViewController: UIViewController, StoryboardInstantiable, 
     private var moviesQueriesSuggestionsView: UIViewController?
     private var moviesTableViewController: MoviesListTableViewController?
     private var searchController = UISearchController(searchResultsController: nil)
-    
+
+    private var routeObserver: AnyCancellable?
+    private var itemsObserver: AnyCancellable?
+    private var queryObserver: AnyCancellable?
+    private var errorObserver: AnyCancellable?
+    private var loadingTypeObserver: AnyCancellable?
+
     static func create(with viewModel: MoviesListViewModel,
                             moviesListViewControllersFactory: MoviesListViewControllersFactory) -> MoviesListViewController {
         let view = MoviesListViewController.instantiateViewController()
@@ -43,11 +50,30 @@ final class MoviesListViewController: UIViewController, StoryboardInstantiable, 
     }
     
     private func bind(to viewModel: MoviesListViewModel) {
-        viewModel.route.observe(on: self) { [weak self] in self?.handle($0) }
-        viewModel.items.observe(on: self) { [weak self] in self?.moviesTableViewController?.items = $0 }
-        viewModel.query.observe(on: self) { [weak self] in self?.updateSearchController(query: $0) }
-        viewModel.error.observe(on: self) { [weak self] in self?.showError($0) }
-        viewModel.loadingType.observe(on: self) { [weak self] _ in self?.updateViewsVisibility() }
+        routeObserver = viewModel.routePublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (route) in
+            self.handle(route)
+        }
+
+        itemsObserver = viewModel.itemsPublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (items) in
+            self.moviesTableViewController?.items = items
+        }
+
+        queryObserver = viewModel.queryPublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (query) in
+            self.updateSearchController(query: query)
+        }
+
+        errorObserver = viewModel.errorPublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (error) in
+            self.showError(error)
+        }
+
+        loadingTypeObserver = viewModel.loadingTypePublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (_) in
+            self.updateViewsVisibility()
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
@@ -79,7 +105,7 @@ final class MoviesListViewController: UIViewController, StoryboardInstantiable, 
         moviesListContainer.isHidden = true
         suggestionsListContainer.isHidden = true
         
-        switch viewModel.loadingType.value {
+        switch viewModel.loadingType {
         case .none: updateMoviesListVisibility()
         case .fullScreen: loadingView.isHidden = false
         case .nextPage: moviesListContainer.isHidden = false

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 final class DefaultPosterImagesRepository {
     
@@ -21,26 +22,16 @@ final class DefaultPosterImagesRepository {
 
 extension DefaultPosterImagesRepository: PosterImagesRepository {
     
-    func image(with imagePath: String, width: Int, completion: @escaping (Result<Data, Error>) -> Void) -> Cancellable? {
+    func image(with imagePath: String, width: Int) -> AnyPublisher<Data, Error> {
         
         let endpoint = APIEndpoints.moviePoster(path: imagePath, width: width)
-        let networkTask = dataTransferService.request(with: endpoint) { [weak self] (response: Result<Data, Error>) in
-            guard let strongSelf = self else { return }
-            
-            switch response {
-            case .success(let data):
-                completion(.success(data))
-                return
-            case .failure(let error):
-                if case let DataTransferError.networkFailure(networkError) = error, networkError.isNotFoundError,
-                    let imageNotFoundData = strongSelf.imageNotFoundData {
-                    completion(.success(imageNotFoundData))
-                    return
-                }
-                completion(.failure(error))
-                return
+        return dataTransferService.request(with: endpoint).catch { [unowned self] (error) -> AnyPublisher<Data, Error> in
+            if case let DataTransferError.networkFailure(networkError) = error, networkError.isNotFoundError,
+                let imageNotFoundData = self.imageNotFoundData {
+                return Future<Data, Error>({ $0(.success(imageNotFoundData)) }).eraseToAnyPublisher()
+            } else {
+                return Fail<Data, Error>(error: error).eraseToAnyPublisher()
             }
-        }
-        return RepositoryTask(networkTask: networkTask)
+        }.eraseToAnyPublisher()
     }
 }

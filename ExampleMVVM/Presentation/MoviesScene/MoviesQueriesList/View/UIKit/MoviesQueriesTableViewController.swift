@@ -6,11 +6,14 @@
 //
 
 import UIKit
+import Combine
 
 final class MoviesQueriesTableViewController: UITableViewController, StoryboardInstantiable {
     
     private var viewModel: MoviesQueryListViewModel!
-    
+
+    private var itemsObserver: AnyCancellable?
+
     static func create(with viewModel: MoviesQueryListViewModel) -> MoviesQueriesTableViewController {
         let view = MoviesQueriesTableViewController.instantiateViewController()
         view.viewModel = viewModel
@@ -28,7 +31,10 @@ final class MoviesQueriesTableViewController: UITableViewController, StoryboardI
     }
     
     private func bind(to viewModel: MoviesQueryListViewModel) {
-        viewModel.items.observe(on: self) { [weak self] _ in self?.tableView.reloadData() }
+        itemsObserver = viewModel.itemsPublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }) { [unowned self] (_) in
+            self.tableView.reloadData()
+        }
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -46,20 +52,20 @@ extension MoviesQueriesTableViewController {
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return viewModel.items.value.count
+        return viewModel.items.count
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard let cell = tableView.dequeueReusableCell(withIdentifier: MoviesQueriesItemCell.reuseIdentifier, for: indexPath) as? MoviesQueriesItemCell else {
             fatalError("Cannot dequeue reusable cell \(MoviesQueriesItemCell.self) with reuseIdentifier: \(MoviesQueriesItemCell.reuseIdentifier)")
         }
-        cell.fill(with: viewModel.items.value[indexPath.row])
+        cell.fill(with: viewModel.items[indexPath.row])
         
         return cell
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: false)
-        viewModel.didSelect(item: viewModel.items.value[indexPath.row])
+        viewModel.didSelect(item: viewModel.items[indexPath.row])
     }
 }

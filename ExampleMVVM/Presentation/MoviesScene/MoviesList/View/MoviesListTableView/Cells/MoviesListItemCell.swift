@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import Combine
 
 final class MoviesListItemCell: UITableViewCell {
     
@@ -17,8 +18,10 @@ final class MoviesListItemCell: UITableViewCell {
     @IBOutlet private var overviewLabel: UILabel!
     @IBOutlet private var posterImageView: UIImageView!
     
-    private var viewModel: MoviesListItemViewModel! { didSet { unbind(from: oldValue) } }
-    
+    private var viewModel: MoviesListItemViewModel!
+
+    private var posterImageObserver: AnyCancellable?
+
     func fill(with viewModel: MoviesListItemViewModel) {
         self.viewModel = viewModel
         titleLabel.text = viewModel.title
@@ -30,10 +33,9 @@ final class MoviesListItemCell: UITableViewCell {
     }
     
     private func bind(to viewModel: MoviesListItemViewModel) {
-        viewModel.posterImage.observe(on: self) { [weak self] in self?.posterImageView.image = $0.flatMap { UIImage(data: $0) } }
-    }
-    
-    private func unbind(from item: MoviesListItemViewModel?) {
-        item?.posterImage.remove(observer: self)
+        posterImageObserver = viewModel.posterImagePublisher.receive(on: RunLoop.main).sink(receiveCompletion: { (_) in
+        }, receiveValue: { [unowned self] (imageData) in
+            self.posterImageView.image = imageData.flatMap { UIImage(data: $0) }
+        })
     }
 }
